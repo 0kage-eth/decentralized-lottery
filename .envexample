@@ -1,0 +1,13 @@
+GOERLI_RPC_URL=https://eth-goerli.g.alchemy.com/v2/your-api-key
+RINKEBY_RPC_URL=https://eth-rinkeby.alchemyapi.io/v2/your-api-key
+POLYGON_MAINNET_RPC_URL='https://polygon-mainnet.g.alchemy.com/v2/your-api-key'
+PRIVATE_KEY=your-private-key
+ALCHEMY_MAINNET_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/alchemy-api-key"
+REPORT_GAS=false
+COINMARKETCAP_API_KEY=coinmarket-api-key
+ETHERSCAN_API_KEY=etherscan-api-key
+AUTO_FUND=false
+VRF_SUBSCRIPTION_ID=chainlink-vrf-subscriptionid
+UPLOAD_TO_PINATA="false"
+PINATA_API_KEY=pinata-api-key
+PINATA_API_SECRET=pinata-api-secret
