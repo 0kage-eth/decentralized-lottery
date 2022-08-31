@@ -3,9 +3,12 @@
 pragma solidity ^0.8.7;
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+import "@chainlink/contracts/src/v0.8/KeeperCompatible.sol";
+import "./DateTime.sol";
 
-contract SmartLottery is VRFConsumerBaseV2{
+contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime {
     using SearchList for address[];
+ 
     enum LotteryStatus{
         open,
         closed
@@ -23,6 +26,9 @@ contract SmartLottery is VRFConsumerBaseV2{
 
     // lottery start time of current epoch
     uint256 private s_lotteryStartTimestamp;
+
+    // lottery duration in hours
+    uint8 private s_duration;
 
     // lottery end time of current epoch
     uint256 private s_lotteryEndTimestamp;
@@ -42,8 +48,6 @@ contract SmartLottery is VRFConsumerBaseV2{
     // lottery ticket fee in eth per ticket to be charged from players
     uint256 private s_lotteryFee;
 
-    // lottery duration in days
-    uint8 private s_duration;
 
     // platform balance of total fees since last drawdown
     // this is sum of all commissions since first epoch minus sum of all drawdowns since first epoch
@@ -73,10 +77,6 @@ contract SmartLottery is VRFConsumerBaseV2{
     uint16 immutable private i_confirmations; // number of block confirmations
     uint32 immutable private i_numWords; // typically we need only 1 random number to be generated
     uint32 immutable private i_callbackGasLimit; // callback gas limit
-
-    uint256[] public s_randomWords; // random words - for this example, we only need an array of size 1
-    uint256 private s_requestId; //request Id generated when we call requestRandomwords
-
     
     // Events
     event NewEntry(address player, uint256 lotteryBalance, uint256 lotteryTickets, uint256 totalPlayers);
@@ -107,6 +107,11 @@ contract SmartLottery is VRFConsumerBaseV2{
         i_callbackGasLimit = _callbackGasLimit;
         s_maxPlayers = type(uint64).max - 1;
         s_platformFee = 50; // charge 50 bps (0.5% as fee)
+
+        s_duration = 24;
+
+        setLotteryStartAndEndTime(block.timestamp);
+
     }
 
     // Modifiers
@@ -115,13 +120,13 @@ contract SmartLottery is VRFConsumerBaseV2{
         _;
     }
 
-    modifier canOpen(){
-        require(s_status != LotteryStatus.open, "Lottery open already!");
+    modifier Open(){
+        require(s_status == LotteryStatus.open, "Lottery should be open!");
         _;
     }
 
-    modifier canClose(){
-        require(s_status != LotteryStatus.closed, "Lottery closed already!");
+    modifier Closed(){
+        require(s_status == LotteryStatus.closed, "Lottery should be closed!");
         _;
     }
 
@@ -144,17 +149,17 @@ contract SmartLottery is VRFConsumerBaseV2{
 
     /**
      * @dev Owner can change lottery duration for the next epoch
-     * @dev Duration will always be in days - and start is always 00:00:00 UTC and end is always 23:30:00 UTC
+     * @dev Duration will always be in hours - and next start cycle is always 30 mins after current end cycle
      */
-     function changeDuration(uint8 _durationInDays) public onlyOwner canOpen{
-        s_duration = _durationInDays;
+     function changeDuration(uint8 _durationInHours) public onlyOwner{
+        s_duration = _durationInHours;
      }
 
      /**
       * @dev Owner can change lottery fee from next epoch
       * @dev Fee is in basis points (0.01% = 1 bp)
       */
-     function changeFee (uint32 _newFeeInBasisPoints ) public onlyOwner canOpen{
+     function changeFee (uint32 _newFeeInBasisPoints ) public onlyOwner{
         s_platformFee = _newFeeInBasisPoints;
      }
 
@@ -162,7 +167,7 @@ contract SmartLottery is VRFConsumerBaseV2{
       * @dev Cap on players
       * @dev Owner can change max players from next epoch
       */
-     function changeMaxPlayers(uint64 _maxPlayers) public onlyOwner canOpen{
+     function changeMaxPlayers(uint64 _maxPlayers) public onlyOwner{
         s_maxPlayers = _maxPlayers;
      }
 
@@ -172,7 +177,7 @@ contract SmartLottery is VRFConsumerBaseV2{
      * @notice note that withdrawal can only be done when no lottery is active
      * @dev withdrawal should never touch user deposits 
      */
-     function withdrawPlatformFees() public onlyOwner canOpen { 
+     function withdrawPlatformFees() public onlyOwner { 
 
         uint256 platformBalance = address(this).balance;
         (bool success, ) = s_owner.call{value: address(this).balance}("");
@@ -186,6 +191,42 @@ contract SmartLottery is VRFConsumerBaseV2{
 
     /******************** ADMIN FUNCTIONS END HERE ************* */
 
+    /******************** KEEPER FUNCTIONS ********************/
+    /**
+     * @notice Function to check upkeep - if duration of lottery has ended
+     * @dev we use ChainLink KeeperCompatibleInterface for this
+     */
+    function checkUpkeep(bytes calldata /* checkData */)external override view returns(bool upkeepNeeded, bytes memory /*performData*/ ){
+
+        // check if current time exceeds end time and lottery status is open
+
+        if(block.timestamp > s_lotteryEndTimestamp && s_status == LotteryStatus.open){
+            upkeepNeeded = true;
+        }
+
+        upkeepNeeded = false;
+    }
+
+
+    /**
+     * @notice performUpkeep - this is a Chainlink keeper function that executes when checkUpkeep function returns true
+     * @dev this is performed by network of Chainlink keepers and not performed by us internally
+     * @dev it is recommended by Chainlink team to always perform check in checkUpkeep before doing performUpkeep
+     */
+
+    function performUpkeep(bytes calldata /* performData */) external override {
+
+        // Check if current time exceeds end time and lottery status is open
+        // This indicates that lottery has ended 
+        // Set status to close, update start time for next lottery and initiate settlement
+        if(block.timestamp > s_lotteryEndTimestamp && s_status == LotteryStatus.open){
+            
+            //close lottery
+            s_status = LotteryStatus.closed;
+            closeLotteryAndAnnounceWinner();
+        }
+
+    }
 
     /******************* ENTER LOTTERY **********************/
 
@@ -237,30 +278,28 @@ contract SmartLottery is VRFConsumerBaseV2{
     }
 
 
+    /********************** SETTLE LOTTERY **********************/
     /**
      * @dev winner will be announced 
      * @dev all proceeds will go to the winner
      * @dev protocol will charge a settlement fee
      */
-    function closeLotteryAndAnnounceWinner() public canClose{
+    function closeLotteryAndAnnounceWinner() public Closed{
 
         // close lottery
         s_status = LotteryStatus.closed;
 
         // request random words
 
-        s_requestId = i_vrfCoordinator.requestRandomWords(i_keyHash, i_subscriptionId, i_confirmations, i_callbackGasLimit, i_numWords);
-        emit CloseLottery(s_requestId);
+        uint256 requestId = i_vrfCoordinator.requestRandomWords(i_keyHash, i_subscriptionId, i_confirmations, i_callbackGasLimit, i_numWords);
+        emit CloseLottery(requestId);
     }
 
-
-    // Get functions
     function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override{
-        s_randomWords= _randomWords;
 
         // normalize random number  - and make it between 0 & s_ticketCtr
         // using modulo operator to generate a number between 0 and s_ticketCtr
-        uint256 winnerIndx = s_randomWords[0] % s_ticketCtr;
+        uint256 winnerIndx = _randomWords[0] % s_ticketCtr;
 
         // once we get winner Index, we get back einner address from s_ticketidToAddressMap mapping
         address winnerAddress = s_ticketidToAddressMap[winnerIndx];
@@ -268,9 +307,138 @@ contract SmartLottery is VRFConsumerBaseV2{
         // emmitting WinnerAnnounced event
         emit WinnerAnnounced(winnerAddress, s_cumulativeBalance, s_lotteryValue );
 
+        // Once winner announced, reset all mappings
+
+        // reset all tickets to 0 for addresses that participated
+        for (uint256 i=0; i< s_players.length; i++){
+            s_addressToNumTicketsMap[s_players[i]] = 0;
+        }
+
+        // reset all addresses to null address
+        for (uint256 i=0; i< s_ticketCtr; i++){
+            s_ticketidToAddressMap[i] = address(0);
+        }
+
+        // reset ticket counter to 0
+        s_ticketCtr = 0;
+
+        // reset lottery value to 0
+        s_lotteryValue = 0;
+
+        // reset s_players to 0 array
+        delete s_players;
+
+        // set lottery status as open
+        s_status = LotteryStatus.open;
+
+        // set epoch counter to +1
+        s_epoch += 1;
+
+        // set new start and end lottery time
+        // sending a timestamp 1 minutes ahead of endtimestamp -> this forces the start time to be atleast 1 minute away from end time
+        setLotteryStartAndEndTime(s_lotteryEndTimestamp + 1 minutes);
+    }
+
+    /*************** HELPER FUNCTIONS ********************/
+
+    /**
+     * @dev resets start and end time for lottery
+     */
+    function setLotteryStartAndEndTime(uint256 currentTimeStamp) private {
+        uint8 creationMonth = getMonth(currentTimeStamp);
+        uint8 creationDay = getDay(currentTimeStamp);
+        uint16 creationYear = getYear(currentTimeStamp);
+
+
+        // take current day's last second to start the lottery
+        s_lotteryStartTimestamp = toTimestamp(creationYear, creationMonth, creationDay, 23, 59, 59);
+
+        //set end time as duration hours more than start time stamp
+        s_lotteryEndTimestamp = s_lotteryEndTimestamp + s_duration * 1 hours;
+    }
+
+    // Get functions
+    
+    // gets status
+    function getStatus() public view returns(LotteryStatus status){
+        status = s_status;
+    }
+
+    // gets lottery start time stamp
+    function getStartTime() public view returns(uint256 start){
+        start = s_lotteryStartTimestamp;
+    }
+
+    // gets lottery end time stamp
+    function getEndTime() public view returns(uint256 end){
+        end = s_lotteryEndTimestamp;
+    }
+
+    // gets lottery duration
+    function getDuration() public view returns(uint8 duration){
+        duration = s_duration;
+    }
+
+    // gets epoch number
+    function getEpoch() public view returns(uint32 epoch){
+        epoch = s_epoch;
+    }
+
+    // gets platform fee in bps (1 bp = 0.01%)
+    function getPlatformFee() public view returns(uint32 platformFee){
+        platformFee = s_platformFee;
+    }
+
+    // gets max players
+    function getMaxPlayers() public view returns(uint64 maxPlayers){
+        maxPlayers = s_maxPlayers;
+    }
+
+    /**
+     * @dev returns lottery fee
+     */
+    function getLotteryFee() public view returns(uint256 lotteryFees){
+        lotteryFees = s_lotteryFee;
+    }
+
+    /**
+     * @dev returns lottery value
+     */
+    function getLotteryValue() public view returns(uint256 lotteryValue){
+        lotteryValue = s_lotteryValue;
+    }
+
+    /**
+     * @dev returns cumulative balance
+     */
+    function getCumulativePlatformBalance() public view returns(uint256 cumulativeBalance){
+        cumulativeBalance = s_cumulativeBalance;
+    }
+
+    /**
+     * @dev returns owner for ticket id
+     */
+    function getOwnerForTicketId(uint256 id) public view returns(address owner){
+        owner = s_ticketidToAddressMap[id];
+    }   
+
+    /**
+     * @dev returns num tickets
+     */
+    function getNumTickets() public view returns(uint64 tickets){
+        tickets = s_addressToNumTicketsMap[msg.sender];
+    }
+
+    /**
+     * @dev returns list of players
+     */
+    function getPlayers() public view returns(address[] memory players){
+        players = s_players;
     }
 
 }
+
+
 
 library SearchList {
     
