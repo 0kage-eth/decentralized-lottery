@@ -5,9 +5,10 @@ import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "@chainlink/contracts/src/v0.8/KeeperCompatible.sol";
 import "./DateTime.sol";
+import "hardhat/console.sol";
 
 contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime {
-    using SearchList for address[];
+    // using SearchList for address[];
  
     enum LotteryStatus{
         open,
@@ -28,7 +29,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
     uint256 private s_lotteryStartTimestamp;
 
     // lottery duration in hours
-    uint8 private s_duration;
+    uint64 private s_duration;
 
     // lottery end time of current epoch
     uint256 private s_lotteryEndTimestamp;
@@ -260,7 +261,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
         s_addressToNumTicketsMap[msg.sender] += _numTickets;
 
         // if address is not in existing player list, update address array
-        if(s_players.indexOfAddress(msg.sender) == type(uint256).max){
+        if(indexOfAddress(msg.sender) == type(uint256).max){
             s_players.push(msg.sender);
         }
 
@@ -341,6 +342,15 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
 
     /*************** HELPER FUNCTIONS ********************/
 
+    function indexOfAddress(address input) public view returns (uint256){
+        for(uint256 indx=0; indx<s_players.length;indx++){
+            if (s_players[indx] == input){
+                return indx;
+            }
+        }
+        return type(uint256).max;
+    }
+
     /**
      * @dev resets start and end time for lottery
      */
@@ -353,8 +363,11 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
         // take current day's last second to start the lottery
         s_lotteryStartTimestamp = toTimestamp(creationYear, creationMonth, creationDay, 23, 59, 59);
 
-        //set end time as duration hours more than start time stamp
-        s_lotteryEndTimestamp = s_lotteryEndTimestamp + s_duration * 1 hours;
+        // console.log("start time %s", s_lotteryStartTimestamp);
+        // console.log("time diff %s",  1 hours);
+        // console.log("duration %s",  s_duration);
+        // //set end time as duration hours more than start time stamp
+        s_lotteryEndTimestamp = s_lotteryStartTimestamp + s_duration * 1 hours;
     }
 
     // Get functions
@@ -375,7 +388,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
     }
 
     // gets lottery duration
-    function getDuration() public view returns(uint8 duration){
+    function getDuration() public view returns(uint64 duration){
         duration = s_duration;
     }
 
@@ -440,14 +453,14 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
 
 
 
-library SearchList {
+// library SearchList {
     
-    function indexOfAddress(address[] storage self, address input) public view returns (uint256){
-        for(uint256 indx=0; indx<self.length;indx++){
-            if (self[indx] == input){
-                return indx;
-            }
-        }
-        return type(uint256).max;
-    }
-}
+//     function indexOfAddress(address[] storage self, address input) public view returns (uint256){
+//         for(uint256 indx=0; indx<self.length;indx++){
+//             if (self[indx] == input){
+//                 return indx;
+//             }
+//         }
+//         return type(uint256).max;
+//     }
+// }

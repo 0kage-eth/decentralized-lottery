@@ -1,5 +1,6 @@
 //SPDX-License-Identifier:MIT
 pragma solidity ^0.8.0;
+import "hardhat/console.sol";
 
 /**
  * @dev Took the code for DateTime implementation from https://github.com/pipermerriam/ethereum-datetime
@@ -156,21 +157,22 @@ contract DateTime {
                 return uint8((timestamp / DAY_IN_SECONDS + 4) % 7);
         }
 
-        function toTimestamp(uint16 year, uint8 month, uint8 day) public pure returns (uint timestamp) {
+        function toTimestamp(uint16 year, uint8 month, uint8 day) public view returns (uint timestamp) {
                 return toTimestamp(year, month, day, 0, 0, 0);
         }
 
-        function toTimestamp(uint16 year, uint8 month, uint8 day, uint8 hour) public pure returns (uint timestamp) {
+        function toTimestamp(uint16 year, uint8 month, uint8 day, uint8 hour) public view returns (uint timestamp) {
                 return toTimestamp(year, month, day, hour, 0, 0);
         }
 
-        function toTimestamp(uint16 year, uint8 month, uint8 day, uint8 hour, uint8 minute) public pure returns (uint timestamp) {
+        function toTimestamp(uint16 year, uint8 month, uint8 day, uint8 hour, uint8 minute) public view returns (uint timestamp) {
                 return toTimestamp(year, month, day, hour, minute, 0);
         }
 
-        function toTimestamp(uint16 year, uint8 month, uint8 day, uint8 hour, uint8 minute, uint8 second) public pure returns (uint timestamp) {
+        function toTimestamp(uint16 year, uint8 month, uint8 day, uint8 hour, uint8 minute, uint8 second) public view returns (uint timestamp) {
                 uint16 i;
 
+                console.log("year %s, month %s, day %s", year, month, day);    
                 // Year
                 for (i = ORIGIN_YEAR; i < year; i++) {
                         if (isLeapYear(i)) {

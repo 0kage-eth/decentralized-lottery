@@ -509,10 +509,11 @@
   resolved "https://registry.yarnpkg.com/@nomicfoundation/hardhat-toolbox/-/hardhat-toolbox-1.0.2.tgz#342b79e19c456a56d8e76bc2e9cc8474cbcfc774"
   integrity sha512-8CEgWSKUK2aMit+76Sez8n7UB0Ze1lwT+LcWxj4EFP30lQWOwOws048t6MTPfThH0BlSWjC6hJRr0LncIkc1Sw==
 
-"@nomiclabs/hardhat-ethers@^2.0.0":
-  version "2.1.1"
-  resolved "https://registry.yarnpkg.com/@nomiclabs/hardhat-ethers/-/hardhat-ethers-2.1.1.tgz#3f1d1ab49813d1bae4c035cc1adec224711e528b"
-  integrity sha512-Gg0IFkT/DW3vOpih4/kMjeZCLYqtfgECLeLXTs7ZDPzcK0cfoc5wKk4nq5n/izCUzdhidO/Utd6ptF9JrWwWVA==
+"@nomiclabs/hardhat-ethers@npm:hardhat-deploy-ethers@^0.3.0-beta.13", hardhat-deploy-ethers@^0.3.0-beta.13:
+  name "@nomiclabs/hardhat-ethers"
+  version "0.3.0-beta.13"
+  resolved "https://registry.yarnpkg.com/hardhat-deploy-ethers/-/hardhat-deploy-ethers-0.3.0-beta.13.tgz#b96086ff768ddf69928984d5eb0a8d78cfca9366"
+  integrity sha512-PdWVcKB9coqWV1L7JTpfXRCI91Cgwsm7KLmBcwZ8f0COSm1xtABHZTyz3fvF6p42cTnz1VM0QnfDvMFlIRkSNw==
 
 "@nomiclabs/hardhat-etherscan@^3.0.0":
   version "3.1.0"
@@ -1653,6 +1654,11 @@ concat-stream@^1.6.0, concat-stream@^1.6.2:
     inherits "^2.0.3"
     readable-stream "^2.2.2"
     typedarray "^0.0.6"
+
+console@^0.7.2:
+  version "0.7.2"
+  resolved "https://registry.yarnpkg.com/console/-/console-0.7.2.tgz#f9a4331249291591b7bf9bffa8e205356f20a9f0"
+  integrity sha512-+JSDwGunA4MTEgAV/4VBKwUHonP8CzJ/6GIuwPi6acKFqFfHUdSGCm89ZxZ5FfGWdZfkdgAroy5bJ5FSeN/t4g==
 
 content-disposition@0.5.4:
   version "0.5.4"
@@ -2981,6 +2987,11 @@ hardhat-gas-reporter@^1.0.8:
     array-uniq "1.0.3"
     eth-gas-reporter "^0.2.24"
     sha1 "^1.1.1"
+
+hardhat-network-helpers@^0.0.1:
+  version "0.0.1"
+  resolved "https://registry.yarnpkg.com/hardhat-network-helpers/-/hardhat-network-helpers-0.0.1.tgz#332b022dce826f79c7b4c93edea55a3fcb4493e4"
+  integrity sha512-EFL22264VV+Pj2CmPuse3Gz3eoWDq5XgsM0H6YKSPs/Kp/7YOZI1m00V38Nlyi154SUn2E11Pf4EBwBE6eslMQ==
 
 hardhat@^2.10.2:
   version "2.10.2"
