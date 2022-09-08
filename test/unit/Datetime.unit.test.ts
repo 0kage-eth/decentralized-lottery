@@ -17,21 +17,21 @@ import { DateTime } from "../../typechain-types"
 
           describe("Get date functions test", () => {
               it("Get Year", async () => {
-                  const randomDate = Date.UTC(2012, 12, 1) //01-01-2012
+                  const randomDate = Date.UTC(2012, 11, 1) //01-Dec-2012
                   const year = await dateContract.getYear(randomDate / 1000)
 
                   expect(year.toString()).equals("2012", "year is 2012")
               })
 
               it("Get Month", async () => {
-                  const randomDate = Date.UTC(2012, 12, 1)
+                  const randomDate = Date.UTC(2012, 11, 1)
                   const month = await dateContract.getMonth(randomDate / 1000)
 
                   expect(month.toString()).equals("12", "month is Dec")
               })
 
               it("Get Day", async () => {
-                  const randomDate: number = Date.UTC(2012, 12, 5)
+                  const randomDate: number = Date.UTC(2012, 11, 5)
                   const day = await dateContract.getDay(randomDate / 1000)
 
                   expect(day.toString()).equals("5", "day is 5th")
