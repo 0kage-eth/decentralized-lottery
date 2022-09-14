@@ -20,7 +20,15 @@ const deploySmaryLottery = async (hre: HardhatRuntimeEnvironment) => {
 
             if (developmentChains.includes(network.name)) {
                 const vrfCoordinatorContract = await ethers.getContract("VRFCoordinatorV2Mock")
+                console.log("vrf coordinator address", vrfCoordinatorContract.address)
                 vrfCoordinatorAddress = vrfCoordinatorContract.address
+
+                // creating a subscription id
+                // this is important for random number to work
+                const subTx = await vrfCoordinatorContract.createSubscription()
+                const subReceipt = await subTx.wait(1)
+
+                subscriptionId = subReceipt.events![0].args!["subId"]
             } else {
                 vrfCoordinatorAddress = networkConfig[chainId].vrfCoordinator!
             }

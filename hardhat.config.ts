@@ -43,11 +43,12 @@ const config: HardhatUserConfig = {
                 // blockNumber: FORKING_BLOCK_NUMBER, // TO DO
                 enabled: false,
             },
-
+            allowUnlimitedContractSize: true,
             chainId: 31337,
         },
         localhost: {
             chainId: 31337,
+            allowUnlimitedContractSize: true,
         },
         goerli: {
             url: GOERLI_RPC_URL,

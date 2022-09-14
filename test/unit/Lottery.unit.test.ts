@@ -3,6 +3,8 @@ import { networkConfig, developmentChains } from "../../helper-hardhat-config"
 import { mine, time } from "@nomicfoundation/hardhat-network-helpers"
 import { expect, assert } from "chai"
 import { SmartLottery, VRFCoordinatorV2Mock } from "../../typechain-types"
+import modulo from "../../utils/modulo"
+import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 
 !developmentChains.includes(network.name)
     ? describe.skip
@@ -434,11 +436,44 @@ import { SmartLottery, VRFCoordinatorV2Mock } from "../../typechain-types"
           })
 
           describe("perform upkeep", () => {
-              it("check if lottery status is closed", async () => {
+              let player1: SignerWithAddress, player2: SignerWithAddress, player3: SignerWithAddress
+              let lotteryFee
+              let totalTickets = 6 // player 1 - 1 ticket, player 2 - 2 tickets, player 3 - 3 tickets
+              let totalPlayers = 3 // 3 players
+              let currentEpoch: number
+
+              beforeEach(async () => {
+                  // we have 3 particpants playing the game here
+
+                  const accounts = await ethers.getSigners()
+
+                  player1 = accounts[0]
+                  player2 = accounts[1]
+                  player3 = accounts[2]
+
+                  lotteryFee = await lotteryContract.getLotteryFee()
+
+                  // player 1 enters by buying single ticket
+                  await lotteryContract.connect(player1).enterLottery(1, { value: lotteryFee })
+
+                  // player 2 enters by buying 2 tickets
+                  await lotteryContract
+                      .connect(player2)
+                      .enterLottery(2, { value: lotteryFee.mul(2) })
+
+                  // player 3 enters by buying 3 tickets
+                  await lotteryContract
+                      .connect(player3)
+                      .enterLottery(3, { value: lotteryFee.mul(3) })
+
+                  currentEpoch = await lotteryContract.getEpoch()
+
+                  // Now close the lottery by moving time ahead
                   // push time forward so that checkupkeep is true
                   const lotteryEndTime = await lotteryContract.getEndTime()
                   await time.increaseTo(lotteryEndTime.add(100))
-
+              })
+              it("check if lottery status is closed", async () => {
                   //perform upkeep manually - since we are testing
                   // in real life, this will be automatically done by chainlink keepers
                   await lotteryContract.performUpkeep("0x")
@@ -449,15 +484,92 @@ import { SmartLottery, VRFCoordinatorV2Mock } from "../../typechain-types"
               })
 
               it("check request id for random numbers", async () => {
-                  // push time forward so that checkupkeep is true
-                  const lotteryEndTime = await lotteryContract.getEndTime()
-                  await time.increaseTo(lotteryEndTime.add(100))
-
                   //perform upkeep manually - since we are testing
                   // in real life, this will be automatically done by chainlink keepers
                   await expect(lotteryContract.performUpkeep("0x"))
                       .to.emit(lotteryContract, "CloseLottery")
                       .withArgs(() => true)
+              })
+
+              it("announce winner", async () => {
+                  // execute fulfil random words - we are mocking Chainlink keepers here
+                  await new Promise(async (resolve, reject) => {
+                      lotteryContract.once("WinnerAnnounced", async () => {
+                          try {
+                              // TEST 1: Once winner announced, current epoch should increase by 1
+                              const newEpoch = await lotteryContract.getEpoch()
+                              expect(newEpoch).equals(
+                                  currentEpoch + 1,
+                                  "Epoch should update by 1 when winner is announced"
+                              )
+
+                              // TEST 2: Status of lottery should be reset back to open after winner announced
+                              expect(await lotteryContract.getStatus()).equals(
+                                  1,
+                                  "Lottery status should get back to Open"
+                              )
+
+                              // TEST 3: Number of players should be reset to 0
+                              expect(await lotteryContract.getPlayers()).equals(
+                                  0,
+                                  "Players should be reset for 0"
+                              )
+
+                              // TEST 4: Lottery value resets to 0
+                              expect(await lotteryContract.getLotteryValue()).equals(
+                                  0,
+                                  "Lottery vlaue resets to 0"
+                              )
+
+                              // TEST 5: address for any ticket id is zero address - resets to zero
+                              expect(await lotteryContract.getOwnerForTicketId(0)).equals(
+                                  "0x0000000000000000000000000000000000000000"
+                              )
+
+                              // TEST 6: num tickets against any player should be 0. Checking for player 3
+                              expect(await lotteryContract.connect(player3).getNumTickets()).equals(
+                                  0,
+                                  "Player 3 tickets should be 0 after winner declared"
+                              )
+
+                              // TEST 7: Check if winner is correctly assigned
+
+                              // TEST 8: Check if winner balance is correctly calculated for winner
+
+                              //   // check if random number is giving correct winner
+                              //   const randomNumber =
+                              //       await lotteryContract.getRandomNumberForCurrentEpoch()
+
+                              //   const winnerIndex = modulo(randomNumber.toString(), totalTickets)
+                              //   const winner =
+                              //       winnerIndex < 1
+                              //           ? player1.address
+                              //           : winnerIndex < 3
+                              //           ? player2.address
+                              //           : player3.address
+                              //   // find winner
+                              //   //   expect(winn).equals()
+
+                              resolve("")
+                          } catch (e) {
+                              console.error(e)
+                              reject()
+                          }
+                      })
+
+                      // first perform upkeep and keep track of requestId
+                      const performTx = await lotteryContract.performUpkeep("0x")
+                      const performTxReceipt = await performTx.wait(1)
+                      const requestId = performTxReceipt.events![1].args!["requestId"]
+
+                      // now perform fulfillRandomWords that generates winner
+                      const tx = await vrfCoordinatorContract.fulfillRandomWords(
+                          requestId,
+                          lotteryContract.address
+                      )
+                  })
+
+                  // check if WinnerAnnounced event is emitted
               })
 
               it("withdraw platform fees", () => {})
