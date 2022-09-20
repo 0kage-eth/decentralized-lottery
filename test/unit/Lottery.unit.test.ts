@@ -3,8 +3,10 @@ import { networkConfig, developmentChains } from "../../helper-hardhat-config"
 import { mine, time } from "@nomicfoundation/hardhat-network-helpers"
 import { expect, assert } from "chai"
 import { SmartLottery, VRFCoordinatorV2Mock } from "../../typechain-types"
+import { WinnerAnnouncedEvent } from "../../typechain-types/contracts/SmartLottery"
 import modulo from "../../utils/modulo"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
+import { BigNumber, Signer } from "ethers"
 
 !developmentChains.includes(network.name)
     ? describe.skip
@@ -437,7 +439,7 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 
           describe("perform upkeep", () => {
               let player1: SignerWithAddress, player2: SignerWithAddress, player3: SignerWithAddress
-              let lotteryFee
+              let lotteryFee: BigNumber
               let totalTickets = 6 // player 1 - 1 ticket, player 2 - 2 tickets, player 3 - 3 tickets
               let totalPlayers = 3 // 3 players
               let currentEpoch: number
@@ -450,7 +452,6 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
                   player1 = accounts[0]
                   player2 = accounts[1]
                   player3 = accounts[2]
-
                   lotteryFee = await lotteryContract.getLotteryFee()
 
                   // player 1 enters by buying single ticket
@@ -495,6 +496,11 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
                   // execute fulfil random words - we are mocking Chainlink keepers here
                   await new Promise(async (resolve, reject) => {
                       lotteryContract.once("WinnerAnnounced", async () => {
+                          const winnerEventFilter = lotteryContract.filters.WinnerAnnounced()
+                          const winnerEvent: WinnerAnnouncedEvent[] =
+                              await lotteryContract.queryFilter(winnerEventFilter)
+                          const { winner, reward, fee } = winnerEvent[0].args
+
                           try {
                               // TEST 1: Once winner announced, current epoch should increase by 1
                               const newEpoch = await lotteryContract.getEpoch()
@@ -505,7 +511,7 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 
                               // TEST 2: Status of lottery should be reset back to open after winner announced
                               expect(await lotteryContract.getStatus()).equals(
-                                  1,
+                                  0,
                                   "Lottery status should get back to Open"
                               )
 
@@ -533,27 +539,41 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
                               )
 
                               // TEST 7: Check if winner is correctly assigned
+                              const randomNumber =
+                                  await lotteryContract.getRandomNumberForCurrentEpoch()
+
+                              const winnerIndex = modulo(randomNumber.toString(), totalTickets)
+                              const winnerManual =
+                                  winnerIndex < 1
+                                      ? player1.address
+                                      : winnerIndex < 3
+                                      ? player2.address
+                                      : player3.address
+                              // find winner
+                              expect(winnerManual).equals(winner, "Winner address should match")
 
                               // TEST 8: Check if winner balance is correctly calculated for winner
 
-                              //   // check if random number is giving correct winner
-                              //   const randomNumber =
-                              //       await lotteryContract.getRandomNumberForCurrentEpoch()
+                              // winner balance = 6 tickets * 99.5% * entry fee per ticket goes to winner
+                              const winnerBalance = lotteryFee.mul(6).mul(995).div(1000)
 
-                              //   const winnerIndex = modulo(randomNumber.toString(), totalTickets)
-                              //   const winner =
-                              //       winnerIndex < 1
-                              //           ? player1.address
-                              //           : winnerIndex < 3
-                              //           ? player2.address
-                              //           : player3.address
-                              //   // find winner
-                              //   //   expect(winn).equals()
+                              expect(winnerBalance).equals(
+                                  reward,
+                                  "Winner reward should be 6 * 99.5% * platform fee"
+                              )
 
-                              resolve("")
+                              // TEST 9: Check if platform gets its share of fees
+                              // platform fee = 6 tickets * entry fee per ticket * 0.05% platform usage charge
+                              const platformFee = lotteryFee.mul(6).mul(5).div(1000)
+                              expect(platformFee).equals(
+                                  fee,
+                                  "Platform fee should be 6 *50 bps* lottery ticket"
+                              )
+
+                              resolve(null)
                           } catch (e) {
                               console.error(e)
-                              reject()
+                              reject(e)
                           }
                       })
 
@@ -562,17 +582,147 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
                       const performTxReceipt = await performTx.wait(1)
                       const requestId = performTxReceipt.events![1].args!["requestId"]
 
+                      console.log("request id sent to fulfil random words", requestId)
                       // now perform fulfillRandomWords that generates winner
                       const tx = await vrfCoordinatorContract.fulfillRandomWords(
                           requestId,
                           lotteryContract.address
                       )
+                      const txReceipt = await tx.wait(1)
+                      //   console.log(txReceipt.events)
                   })
-
                   // check if WinnerAnnounced event is emitted
               })
+          })
 
-              it("withdraw platform fees", () => {})
+          describe("Complete lottery", () => {
+              let player1: SignerWithAddress, player2: SignerWithAddress, player3: SignerWithAddress
+              let owner: SignerWithAddress
+              let lotteryFee: BigNumber
+              let totalTickets = 6 // player 1 - 1 ticket, player 2 - 2 tickets, player 3 - 3 tickets
+              let totalPlayers = 3 // 3 players
+              let currentEpoch: number
+              let winner: any, reward: any, fee: any
+
+              beforeEach(async () => {
+                  const accounts = await ethers.getSigners()
+                  owner = accounts[0]
+                  player1 = accounts[1]
+                  player2 = accounts[2]
+                  player3 = accounts[3]
+
+                  lotteryFee = await lotteryContract.getLotteryFee()
+                  await lotteryContract.connect(player1).enterLottery(1, { value: lotteryFee })
+                  await lotteryContract
+                      .connect(player2)
+                      .enterLottery(2, { value: lotteryFee.mul(2) })
+                  await lotteryContract
+                      .connect(player3)
+                      .enterLottery(3, { value: lotteryFee.mul(3) })
+
+                  currentEpoch = await lotteryContract.getEpoch()
+
+                  // Now close the lottery by moving time ahead
+                  // push time forward so that checkupkeep is true
+                  const lotteryEndTime = await lotteryContract.getEndTime()
+                  await time.increaseTo(lotteryEndTime.add(100))
+
+                  const checkUpkeepTx = await lotteryContract.performUpkeep("0x")
+                  const checkUpkeepReceipt = await checkUpkeepTx.wait(1)
+
+                  await new Promise(async (resolve, reject) => {
+                      lotteryContract.once("WinnerAnnounced", async () => {
+                          try {
+                              const winnerEventFilter = lotteryContract.filters.WinnerAnnounced()
+                              const winnerEvent: WinnerAnnouncedEvent[] =
+                                  await lotteryContract.queryFilter(winnerEventFilter)
+
+                              winner = winnerEvent[0].args.winner
+                              reward = winnerEvent[0].args.reward
+                              fee = winnerEvent[0].args.fee
+
+                              resolve("")
+                          } catch (e) {
+                              console.error(e)
+                              reject()
+                          }
+                      })
+
+                      const requestId = checkUpkeepReceipt.events![1].args!["requestId"]
+                      const performUpkeepTx = await vrfCoordinatorContract.fulfillRandomWords(
+                          requestId,
+                          lotteryContract.address
+                      )
+                      performUpkeepTx.wait(1)
+                  })
+              })
+
+              it("withdraw platform fees", async () => {
+                  // withdraw all fees by platform
+                  const player1BalanceBefore = await owner.getBalance()
+                  const withdrawTx = await lotteryContract.connect(owner).withdrawPlatformFees()
+
+                  const withdrawTxReceipt = await withdrawTx.wait(1)
+                  const player1BalanceAfter = await owner.getBalance()
+                  const gasConsumed = withdrawTxReceipt.gasUsed
+
+                  console.log("gas consumed", ethers.utils.formatEther(gasConsumed))
+                  console.log("fee", ethers.utils.formatEther(fee))
+                  console.log(
+                      `${ethers.utils.formatEther(player1BalanceBefore)} ETH before withdrawal`
+                  )
+                  console.log(
+                      `${ethers.utils.formatEther(
+                          player1BalanceBefore.add(fee).sub(gasConsumed)
+                      )} ETH before withdrawal plus fee`
+                  )
+                  console.log(
+                      `${ethers.utils.formatEther(player1BalanceAfter)} ETH after withdrawal`
+                  )
+
+                  expect(player1BalanceBefore.add(fee).sub(gasConsumed)).equals(
+                      player1BalanceAfter,
+                      "Balance should increase by platform fee adjusted for gas"
+                  )
+              })
+
+              it("withdraw winner fees", async () => {
+                  const winnerSigner = await ethers.getSigner(winner)
+                  const winnerBalanceBefore = await winnerSigner.getBalance()
+                  const winnerBalanceBefore2 = await ethers.provider.getBalance(winner)
+                  const winnerWithdrawResponse = await lotteryContract
+                      .connect(winnerSigner)
+                      .withdrawWinnerProceeds()
+                  const winnerWithdrawTx = await winnerWithdrawResponse.wait(1)
+
+                  const gasUsed = winnerWithdrawTx.gasUsed
+
+                  const winnerBalanceAfter = await winnerSigner.getBalance()
+                  console.log(
+                      `${ethers.utils.formatEther(winnerBalanceBefore)} ETH before withdrawal`
+                  )
+                  console.log(
+                      `${ethers.utils.formatEther(winnerBalanceBefore2)} ETH before withdrawal 2`
+                  )
+
+                  console.log(
+                      `${ethers.utils.formatEther(winnerBalanceAfter)} ETH after withdrawal`
+                  )
+
+                  const winnerWalletDifference = winnerBalanceBefore
+                      .add(reward)
+                      .sub(gasUsed)
+                      .sub(winnerBalanceAfter)
+
+                  if (winnerWalletDifference.lt(0)) {
+                      winnerWalletDifference.mul(-1)
+                  }
+
+                  expect(winnerWalletDifference).lessThanOrEqual(
+                      ethers.utils.parseEther("0.00001"),
+                      "Winner wallet should increase by rewards minus gas used"
+                  )
+              })
 
               it("set lottery start and end times", () => {})
           })

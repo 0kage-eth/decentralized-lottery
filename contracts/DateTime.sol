@@ -172,7 +172,7 @@ contract DateTime {
         function toTimestamp(uint16 year, uint8 month, uint8 day, uint8 hour, uint8 minute, uint8 second) public view returns (uint timestamp) {
                 uint16 i;
 
-                console.log("year %s, month %s, day %s", year, month, day);    
+//                console.log("year %s, month %s, day %s", year, month, day);    
                 // Year
                 for (i = ORIGIN_YEAR; i < year; i++) {
                         if (isLeapYear(i)) {

@@ -113,9 +113,9 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
         i_numWords = _numWords;
         i_callbackGasLimit = _callbackGasLimit;
         s_maxPlayers = type(uint64).max - 1;
-        s_platformFee = 50; // charge 50 bps (0.5% as fee)
+        s_platformFee = 100; // charge 50 bps (0.5% as fee)
         s_owner = payable(msg.sender);
-        s_lotteryFee = 0.1 ether;
+        s_lotteryFee = 1 ether;
         s_duration = 24;
         s_maxTicketsPerPlayer = 100;
 
@@ -238,12 +238,13 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
             s_ticketCtr++;
         }
 
+        uint256 platformFee = msg.value * s_platformFee / 10000;
         //updating lottery value
-        s_lotteryValue += msg.value;
+        s_lotteryValue += (msg.value - platformFee);
 
         // updating cumulative balance
         // every time a new player comes in, platform accrues a fee
-        s_cumulativeBalance += s_platformFee * msg.value / 10000;
+        s_cumulativeBalance += platformFee;
 
         emit NewEntry(msg.sender, s_lotteryValue, s_ticketCtr, s_players.length);
     }
@@ -330,6 +331,10 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
         s_ticketCtr = 0;
 
         // reset lottery value to 0
+        uint256 winnerPot = s_lotteryValue;
+
+        // Add proceeds to winner balance
+        s_winnerBalances[winnerAddress] += s_lotteryValue;
         s_lotteryValue = 0;
 
         // reset s_players to 0 array
@@ -346,8 +351,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
         // setLotteryStartAndEndTime(s_lotteryEndTimestamp + 1 minutes);
 
         // emmitting WinnerAnnounced event
-        emit WinnerAnnounced(winnerAddress, s_cumulativeBalance, s_lotteryValue );
-
+        emit WinnerAnnounced(winnerAddress, winnerPot, s_cumulativeBalance );
 
     }
 
@@ -359,13 +363,18 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
      */
     function withdrawWinnerProceeds() external payable{
         if(s_winnerBalances[msg.sender] > 0){
+            console.log("winner balance before transfer", address(msg.sender).balance);
             uint256 winnerBalance = s_winnerBalances[msg.sender];
+            console.log("winner proceeds", winnerBalance);
+
             s_winnerBalances[msg.sender] = 0; // pushing it to zero before actual transfer to avoid re-entrancy attacks
 
             (bool success, ) = msg.sender.call{value: winnerBalance}("");
             if(!success){
                 revert SmartLottery__TransferFailed(winnerBalance);
             }
+            console.log("winner balance after transfer", address(msg.sender).balance);
+
         }
     }
 
