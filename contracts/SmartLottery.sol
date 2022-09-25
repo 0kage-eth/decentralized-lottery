@@ -4,10 +4,11 @@ pragma solidity ^0.8.7;
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "@chainlink/contracts/src/v0.8/KeeperCompatible.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./DateTime.sol";
 import "hardhat/console.sol";
 
-contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime {
+contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime, Ownable {
     // using SearchList for address[];
  
     enum LotteryStatus{
@@ -19,7 +20,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
     VRFCoordinatorV2Interface public immutable  i_vrfCoordinator;
   
     // Storage variables
-    address payable private s_owner;
+    address payable private s_platformBeneficiary;
 
     // status ->status can have three states - open, close
     // lottery will be closed from current epoch end time to next epoch start time
@@ -113,9 +114,9 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
         i_numWords = _numWords;
         i_callbackGasLimit = _callbackGasLimit;
         s_maxPlayers = type(uint64).max - 1;
-        s_platformFee = 100; // charge 50 bps (0.5% as fee)
-        s_owner = payable(msg.sender);
-        s_lotteryFee = 1 ether;
+        s_platformFee = 50; // charge 50 bps (0.5% as fee)
+        s_platformBeneficiary = payable(msg.sender);
+        s_lotteryFee = 0.1 ether;
         s_duration = 24;
         s_maxTicketsPerPlayer = 100;
 
@@ -123,12 +124,10 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
 
     }
 
-    // Modifiers
-    modifier OnlyOwner(){
-        require(msg.sender == s_owner, "Only owner has access!");
+    modifier OnlyPlatformBeneficiary(){
+        require(msg.sender == s_platformBeneficiary, "Only platform creator can withdraw platform fees");
         _;
     }
-
     modifier Open(){
         require(s_status == LotteryStatus.open, "Lottery should be open!");
         _;
@@ -149,18 +148,18 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
 
     /**
      * @notice function to be called when ownership needs to be transferred
-     * @dev changing ownership means that new owner can withdraw platform fees to their address
-     * @dev also owner can change platform parameters such as max players, ticket limit etc
+     * @notice changing platform beneficiary means that platform beneficiary can change address
+     * @notice where platform fees would be sent to
      */
-    function transferOwnership(address payable _newOwner) public OnlyOwner {
-        s_owner = _newOwner;
+    function changePlatformBeneficiary(address payable _newBeneficiary) public OnlyPlatformBeneficiary {
+        s_platformBeneficiary = _newBeneficiary;
     }
 
     /**
      * @dev Owner can change lottery duration for the next epoch
      * @dev Duration will always be in hours - and next start cycle is always 30 mins after current end cycle
      */
-     function changeDuration(uint8 _durationInHours) public OnlyOwner Closed{
+     function changeDuration(uint8 _durationInHours) public onlyOwner Closed{
         s_duration = _durationInHours;
      }
 
@@ -168,7 +167,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
       * @dev Owner can change lottery fee from next epoch
       * @dev Fee is in basis points (0.01% = 1 bp)
       */
-     function changeFee (uint32 _newFeeInBasisPoints ) public OnlyOwner Closed{
+     function changeFee (uint32 _newFeeInBasisPoints ) public onlyOwner Closed{
         s_platformFee = _newFeeInBasisPoints;
      }
 
@@ -176,19 +175,19 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
       * @dev Cap on players
       * @dev Owner can change max players from next epoch
       */
-     function changeMaxPlayers(uint64 _maxPlayers) public OnlyOwner Closed{
+     function changeMaxPlayers(uint64 _maxPlayers) public onlyOwner Closed{
         s_maxPlayers = _maxPlayers;  
      }
 
-     function changeMaxTicketsPerPlayer(uint32 _ticketsPerPlayer) public OnlyOwner Closed{
+     function changeMaxTicketsPerPlayer(uint32 _ticketsPerPlayer) public onlyOwner Closed{
         s_maxTicketsPerPlayer = _ticketsPerPlayer;
      }
 
-     function stopLottery() public OnlyOwner{
+     function stopLottery() public onlyOwner{
         s_status = LotteryStatus.closed;
      }
 
-     function startLottery() public OnlyOwner{
+     function startLottery() public onlyOwner{
         s_status = LotteryStatus.open;
      }
 
@@ -361,11 +360,11 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
      * @dev check if winner balance exists, if it does, a transfer is initiated from contract address
      * 
      */
-    function withdrawWinnerProceeds() external payable{
+    function withdrawWinnerProceeds() external{
         if(s_winnerBalances[msg.sender] > 0){
-            console.log("winner balance before transfer", address(msg.sender).balance);
+    //        console.log("winner balance before transfer", address(msg.sender).balance);
             uint256 winnerBalance = s_winnerBalances[msg.sender];
-            console.log("winner proceeds", winnerBalance);
+    //        console.log("winner proceeds", winnerBalance);
 
             s_winnerBalances[msg.sender] = 0; // pushing it to zero before actual transfer to avoid re-entrancy attacks
 
@@ -373,7 +372,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
             if(!success){
                 revert SmartLottery__TransferFailed(winnerBalance);
             }
-            console.log("winner balance after transfer", address(msg.sender).balance);
+    //        console.log("winner balance after transfer", address(msg.sender).balance);
 
         }
     }
@@ -384,20 +383,25 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
      * @notice note that withdrawal can only be done when no lottery is active
      * @dev withdrawal should never touch user deposits 
      */
-     function withdrawPlatformFees() public OnlyOwner { 
-
+     function withdrawPlatformFees() public OnlyPlatformBeneficiary { 
+        // console.log('beneficiary address', s_platformBeneficiary);
+        // console.log("platform balance before transfer", address(s_platformBeneficiary).balance);
         //  uint256 platformBalance = address(this).balance;
         uint256 balance = s_cumulativeBalance;
         
+        // console.log("balance for transfer", balance);
         // set it to 0 to prevent re-entrancy attacks
         s_cumulativeBalance = 0;
 
         // transfer cumulative balance out of the address balance
-        (bool success, ) = s_owner.call{value: balance}("");
+        (bool success, ) = s_platformBeneficiary.call{value: balance}("");
+        
+        // console.log("platform balance after transfer", address(s_platformBeneficiary).balance);
+
         if(!success){
             revert SmartLottery__TransferFailed(balance);
         }
-        emit Withdrawal( balance, s_owner);
+        emit Withdrawal( balance, s_platformBeneficiary);
 
      }
 
@@ -507,6 +511,10 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
         total = s_ticketCtr;
     }
 
+    function getUnclaimedBalance() public view returns(uint256 unclaimedBalance){
+        unclaimedBalance = s_winnerBalances[msg.sender];
+    }
+
     /**
      * @dev returns list of players
      */
@@ -522,8 +530,8 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime 
         return i_vrfCoordinator;
     }
 
-    function getContractOwner() public view returns(address owner){
-        return s_owner;
+    function getPlatformBeneficiary() public view returns(address beneficiary){
+        beneficiary = s_platformBeneficiary;
     }
 
     function getVRFContractSubscriptionId() public view returns(uint96 subId){

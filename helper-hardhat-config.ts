@@ -63,7 +63,11 @@ export const networkConfig: networkConfigInfo = {
         name: "goerli",
         linkToken: "0x326C977E6efc84E512bB9C30f76E30c160eD06FB",
         vrfCoordinator: "0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D",
-        blockConfirmations: 3,
+        keyHash: "0x79d3d8832d904592c0bf9818b621522c988bb8b0c05cdc3b15aea1b6e8db0c15",
+        gasLimit: 2500000,
+        blockConfirmations: 6,
+        callbackGasLimit: "500000",
+        subscriptionId: "8854",
         minEth: "0.01",
     },
     1: {

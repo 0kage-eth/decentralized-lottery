@@ -18,12 +18,14 @@ const RINKEBY_RPC_URL =
     "https://eth-rinkeby.alchemyapi.io/v2/7GqOn2J6cQ9yN-tLeSrB3eKweLhdCYWP"
 const GOERLI_RPC_URL =
     process.env.GOERLI_RPC_URL ||
-    "https://eth-goerli.g.alchemy.com/v2/XhPsDYWBB-PKbJ7lxHkQdorcw0MNN_W6"
+    "https://eth-goerli.g.alchemy.com/v2/dQntebXGpHJbryB4EfeBHSx4FB9q8Dt_"
 const POLYGON_MAINNET_RPC_URL =
     process.env.POLYGON_MAINNET_RPC_URL ||
     "https://polygon-mainnet.g.alchemy.com/v2/Y5OiOarO4GBHWfYKFKKudiayPQfOkuoi"
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY
+const PRIVATE_KEY_PLAYER1 = process.env.PRIVATE_KEY_PLAYER1
+const PRIVATE_KEY_PLAYER2 = process.env.PRIVATE_KEY_PLAYER2
 
 // this needs to be revisited
 const FORKING_BLOCK_NUMBER = process.env.FORKING_BLOCK_NUMBER
@@ -52,7 +54,12 @@ const config: HardhatUserConfig = {
         },
         goerli: {
             url: GOERLI_RPC_URL,
-            accounts: PRIVATE_KEY !== undefined ? [PRIVATE_KEY] : [],
+            accounts:
+                PRIVATE_KEY !== undefined &&
+                PRIVATE_KEY_PLAYER1 !== undefined &&
+                PRIVATE_KEY_PLAYER2 !== undefined
+                    ? [PRIVATE_KEY, PRIVATE_KEY_PLAYER1, PRIVATE_KEY_PLAYER2]
+                    : [],
             //accounts: {
             //     mnemonic: MNEMONIC,
             // },
@@ -61,7 +68,12 @@ const config: HardhatUserConfig = {
         },
         rinkeby: {
             url: RINKEBY_RPC_URL,
-            accounts: PRIVATE_KEY !== undefined ? [PRIVATE_KEY] : [],
+            accounts:
+                PRIVATE_KEY !== undefined &&
+                PRIVATE_KEY_PLAYER1 !== undefined &&
+                PRIVATE_KEY_PLAYER2 !== undefined
+                    ? [PRIVATE_KEY, PRIVATE_KEY_PLAYER1, PRIVATE_KEY_PLAYER2]
+                    : [],
             //   accounts: {
             //     mnemonic: MNEMONIC,
             //   },
@@ -104,8 +116,11 @@ const config: HardhatUserConfig = {
             default: 0, // here this will by default take the first account as deployer
             1: 0, // similarly on mainnet it will take the first account as deployer. Note though that depending on how hardhat network are configured, the account 0 on one network can be different than on another
         },
-        feeCollector: {
+        player1: {
             default: 1,
+        },
+        player2: {
+            default: 2,
         },
     },
     solidity: {
