@@ -1,6 +1,6 @@
 import { HardhatRuntimeEnvironment } from "hardhat/types"
 import { developmentChains } from "../helper-hardhat-config"
-import { VRFCoordinatorV2Mock } from "../typechain-types"
+import { zKAGE_MOCK_SUPPLY } from "../constants"
 
 const deployMocks = async (hre: HardhatRuntimeEnvironment) => {
     const { deployments, network, getNamedAccounts, ethers } = hre
@@ -13,6 +13,8 @@ const deployMocks = async (hre: HardhatRuntimeEnvironment) => {
 
     if (developmentChains.includes(network.name)) {
         log("Local network detected... Deploying mocks...")
+
+        log("Deploying VRF Coordinator Mock...")
         const args: any = [BASE_FEE, GAS_PRICE_PER_LINK]
         const tx = await deploy("VRFCoordinatorV2Mock", {
             from: deployer,
@@ -23,9 +25,21 @@ const deployMocks = async (hre: HardhatRuntimeEnvironment) => {
 
         // once VRFCoordinatorV2Mock is created, first thing we need to do is assign a subscription Id
 
-        const vrfMockContract: VRFCoordinatorV2Mock = await ethers.getContract(
-            "VRFCoordinatorV2Mock"
-        )
+        // const vrfMockContract: VRFCoordinatorV2Mock = await ethers.getContract(
+        //     "VRFCoordinatorV2Mock"
+        // )
+        log("---------------------------")
+
+        log("Deploying Zero Kage Mock")
+        const zArgs = [ethers.utils.parseEther(zKAGE_MOCK_SUPPLY)]
+        const deployTx = await deploy("ZeroKageMock", {
+            from: deployer,
+            log: true,
+            args: zArgs,
+            waitConfirmations: 1,
+        })
+
+        log("---------------------------")
 
         // log(`VRFCoordinatorV2Mock deployed at ${tx.address}; txn hash: ${tx.transactionHash}`)
     }
@@ -33,4 +47,4 @@ const deployMocks = async (hre: HardhatRuntimeEnvironment) => {
 
 export default deployMocks
 
-deployMocks.tags = ["all", "main", "mocks"]
+deployMocks.tags = ["all", "main", "main0Kage", "mocks"]

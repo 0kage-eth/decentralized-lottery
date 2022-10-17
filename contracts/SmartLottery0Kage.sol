@@ -5,10 +5,11 @@ import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "@chainlink/contracts/src/v0.8/KeeperCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./DateTime.sol";
 import "hardhat/console.sol";
 
-contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime, Ownable {
+contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime, Ownable {
     // using SearchList for address[];
  
     enum LotteryStatus{
@@ -79,6 +80,9 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
     // list of players who have participated thus far in the current epoch
     address[] private s_players;
 
+    //zero kage contract
+    IERC20 private immutable i_zKage;
+
     //VRF specific variables
     bytes32 immutable private i_keyHash; // gas lane for chainlink
     uint64 immutable private i_subscriptionId; // subscription id for chainlink VRF. If you don't have one, create a subscription id at https://vrf.chain.link/
@@ -88,6 +92,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
     
     // Events
     event NewEntry(address player, uint256 lotteryBalance, uint256 lotteryTickets, uint256 totalPlayers);
+
     event WinnerAnnounced(address winner, uint256 reward, uint256 fee);
     event Withdrawal(uint256 amount, address recepient);
     event CloseLottery(uint256 requestId);
@@ -102,11 +107,12 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
     error SmartLottery__InsufficientFunds(uint256 sentAmt, uint256 expectedAmt);
     error SmartLottery__MaxPlayerLimit(uint64 players);
     error SmartLottery__MaxTicketLimit(uint64 existing, uint64 limit);
-    error SmartLottery__TransferFailed(uint256 fee);
-
+    error SmartLottery__EntryFeeTransferFailed(address player, uint256 fee);
+    error SmartLottery__WinnerTransferFailed(address winner, uint256 fee);
+    error SmartLottery__PlatformOwnerTransferFailed(address platformOwner, uint256 fee);
 
     // Constructor
-    constructor(address _vrfCoordinator, bytes32 _keyHash, uint64 _subscriptionId, uint16 _numConfirmations, uint32 _numWords, uint32 _callbackGasLimit) VRFConsumerBaseV2(_vrfCoordinator) {
+    constructor(address _vrfCoordinator, bytes32 _keyHash, uint64 _subscriptionId, uint16 _numConfirmations, uint32 _numWords, uint32 _callbackGasLimit, address _zKageAddress) VRFConsumerBaseV2(_vrfCoordinator) {
         i_vrfCoordinator = VRFCoordinatorV2Interface(_vrfCoordinator);
         i_keyHash = _keyHash;
         i_subscriptionId = _subscriptionId;
@@ -119,6 +125,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
         s_lotteryFee = 0.1 ether;
         s_duration = 24;
         s_maxTicketsPerPlayer = 100;
+        i_zKage = IERC20(_zKageAddress);
 
         setLotteryStartAndEndTime(block.timestamp);
 
@@ -221,8 +228,17 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
         }
 
         // check if correct fee is sent by user (numtickets * lotteryFee)
-        if(msg.value != _numTickets * s_lotteryFee){
-            revert SmartLottery__InsufficientFunds(msg.value, _numTickets*s_lotteryFee);
+        uint256 accntBalance = i_zKage.balanceOf(msg.sender);
+        uint256 playingFees = _numTickets * s_lotteryFee; 
+        if(accntBalance < playingFees){
+            revert SmartLottery__InsufficientFunds(msg.value, playingFees);
+        }
+
+        // transfer playingFees to this address
+        bool success = i_zKage.transferFrom(msg.sender, address(this), playingFees);
+
+        if(!success){
+            revert SmartLottery__EntryFeeTransferFailed(msg.sender, playingFees);
         }
 
         // update tickets to given address
@@ -240,9 +256,10 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
             s_ticketCtr++;
         }
 
-        uint256 platformFee = msg.value * s_platformFee / 10000;
+        uint256 platformFee = playingFees * s_platformFee / 10000;
+
         //updating lottery value
-        s_lotteryValue += (msg.value - platformFee);
+        s_lotteryValue += (playingFees - platformFee);
 
         // updating cumulative balance
         // every time a new player comes in, platform accrues a fee
@@ -371,9 +388,10 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
 
             s_winnerBalances[msg.sender] = 0; // pushing it to zero before actual transfer to avoid re-entrancy attacks
 
-            (bool success, ) = msg.sender.call{value: winnerBalance}("");
+            bool success = i_zKage.transfer(msg.sender, winnerBalance);
+//            (bool success, ) = msg.sender.call{value: winnerBalance}("");
             if(!success){
-                revert SmartLottery__TransferFailed(winnerBalance);
+                revert SmartLottery__WinnerTransferFailed(msg.sender, winnerBalance);
             }
     //        console.log("winner balance after transfer", address(msg.sender).balance);
 
@@ -397,13 +415,19 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
         s_cumulativeBalance = 0;
 
         // transfer cumulative balance out of the address balance
-        (bool success, ) = s_platformBeneficiary.call{value: balance}("");
+        bool success = i_zKage.transfer(s_platformBeneficiary, balance);
+
+        if(!success){
+            revert SmartLottery__PlatformOwnerTransferFailed(s_platformBeneficiary, balance);
+        }
+
+//        (bool success, ) = s_platformBeneficiary.call{value: balance}("");
         
         // console.log("platform balance after transfer", address(s_platformBeneficiary).balance);
 
-        if(!success){
-            revert SmartLottery__TransferFailed(balance);
-        }
+        // if(!success){
+        //     revert SmartLottery__TransferFailed(balance);
+        // }
         emit Withdrawal( balance, s_platformBeneficiary);
 
      }
@@ -498,10 +522,10 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
     }
 
     /**
-     * @dev returns owner for ticket id
+     * @dev returns player for ticket id
      */
-    function getOwnerForTicketId(uint256 id) public view returns(address owner){
-        owner = s_ticketidToAddressMap[id];
+    function getOwnerForTicketId(uint256 id) public view returns(address player){
+        player = s_ticketidToAddressMap[id];
     }   
 
     /**

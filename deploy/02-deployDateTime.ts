@@ -1,5 +1,7 @@
 import { HardhatRuntimeEnvironment } from "hardhat/types"
 import { networkConfig } from "../helper-hardhat-config"
+import { developmentChains } from "../helper-hardhat-config"
+import { verify } from "../utils/verify"
 
 const deployDateTime = async (hre: HardhatRuntimeEnvironment) => {
     try {
@@ -15,6 +17,10 @@ const deployDateTime = async (hre: HardhatRuntimeEnvironment) => {
                 log: true,
                 waitConfirmations: networkConfig[chainId!].blockConfirmations || 1,
             })
+
+            if (!developmentChains.includes(network.name)) {
+                await verify(tx.address, [])
+            }
             //           log(`tx deployed at ${tx.address} and has transaction hash ${tx.transactionHash}`)
         } else {
             log("Unrecognized chain - abandoning deployment...")

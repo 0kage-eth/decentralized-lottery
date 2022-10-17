@@ -1,9 +1,11 @@
 import { HardhatRuntimeEnvironment } from "hardhat/types"
 import { networkConfig, developmentChains } from "../helper-hardhat-config"
 import { verify } from "../utils/verify"
+import { GOERLI_ZEROKAGE_ADDRESS } from "../constants"
 
-// Deploy Smart Lottery ETH version - where all payments and rewards are in ETH terms
-const deploySmaryLottery = async (hre: HardhatRuntimeEnvironment) => {
+// Deploy Smart Lottery 0KAGE version - where all payments and rewards are in 0KAGE terms
+
+const deploySmaryLottery0Kage = async (hre: HardhatRuntimeEnvironment) => {
     try {
         const { deployments, network, getNamedAccounts, ethers } = hre
         const { deploy, log } = deployments
@@ -19,7 +21,7 @@ const deploySmaryLottery = async (hre: HardhatRuntimeEnvironment) => {
             let numConfirmations: number = networkConfig[chainId].blockConfirmations!
             let numWords: number = 1
             let callbackGasLimit: string = networkConfig[chainId].callbackGasLimit!
-
+            let zKageAddress
             if (developmentChains.includes(network.name)) {
                 const vrfCoordinatorContract = await ethers.getContract("VRFCoordinatorV2Mock")
                 // console.log("vrf coordinator address", vrfCoordinatorContract.address)
@@ -36,8 +38,13 @@ const deploySmaryLottery = async (hre: HardhatRuntimeEnvironment) => {
                     ethers.utils.parseEther("1")
                 )
                 await fundTx.wait(1)
+
+                // Get ZKage
+                const zKageContract = await ethers.getContract("ZeroKageMock")
+                zKageAddress = zKageContract.address
             } else {
                 vrfCoordinatorAddress = networkConfig[chainId].vrfCoordinator!
+                zKageAddress = GOERLI_ZEROKAGE_ADDRESS
             }
 
             const args: any = [
@@ -47,9 +54,10 @@ const deploySmaryLottery = async (hre: HardhatRuntimeEnvironment) => {
                 numConfirmations,
                 numWords,
                 callbackGasLimit,
+                zKageAddress,
             ]
 
-            const tx = await deploy("SmartLottery", {
+            const tx = await deploy("SmartLottery0Kage", {
                 from: deployer,
                 args: args,
                 log: true,
@@ -70,6 +78,6 @@ const deploySmaryLottery = async (hre: HardhatRuntimeEnvironment) => {
     }
 }
 
-export default deploySmaryLottery
+export default deploySmaryLottery0Kage
 
-deploySmaryLottery.tags = ["all", "main", "lottery"]
+deploySmaryLottery0Kage.tags = ["all", "main", "main0Kage", "lottery0Kage"]

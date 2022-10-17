@@ -30,30 +30,19 @@ developmentChains.includes(network.name)
 
           beforeEach(async () => {
               console.log("Executing before each...")
-              //   const accounts = await ethers.getSigners()
-              //   // Step 0 : Get all players
-              //   platformAdmin = accounts[0]
-              //   player1 = accounts[1]
-              //   player2 = accounts[2]
+              const accounts = await ethers.getSigners()
+              // Step 0 : Get all players
+              platformAdmin = accounts[0]
+              player1 = accounts[1]
+              player2 = accounts[2]
           })
 
           it("full end-to-end lottery integration test", async () => {
               console.log("starting end-to-end testing")
-              //   console.log("admin address - goerli", platformAdmin.address)
-              //   console.log("player1 address - goerli", player1.address)
-              //   console.log("player2 address - goerli", player2.address)
-              //   const player3 = accounts[3]
-              //   // Step 1: deploy contracts
-              //   deployments.fixture(["all"])
-              //   // Step 2: Get LotteryContract and MockVRFCoordinator contract
-              //   const lotteryContract: SmartLottery = await ethers.getContract(
-              //       "SmartLottery",
-              //       platformAdmin.address
-              //   )
-              //   const vrfMockCoordinatorContract: VRFCoordinatorV2Mock = await ethers.getContract(
-              //       "VRFCoordinatorV2Mock",
-              //       platformAdmin.address
-              //   )
+              console.log("admin address - goerli", platformAdmin.address)
+              console.log("player1 address - goerli", player1.address)
+              console.log("player2 address - goerli", player2.address)
+
               //   // Step 3: All players enter lottery with 0.1 ETH each
               //   const player1EnterTx = await lotteryContract
               //       .connect(player1)
