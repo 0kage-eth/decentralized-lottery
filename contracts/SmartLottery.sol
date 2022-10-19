@@ -159,7 +159,7 @@ contract SmartLottery is VRFConsumerBaseV2, KeeperCompatibleInterface, DateTime,
      * @dev Owner can change lottery duration for the next epoch
      * @dev Duration will always be in hours - and next start cycle is always 30 mins after current end cycle
      */
-     function changeDuration(uint8 _durationInHours) public onlyOwner Closed{
+     function changeDuration(uint64 _durationInHours) public onlyOwner Closed{
         s_duration = _durationInHours;
      }
 

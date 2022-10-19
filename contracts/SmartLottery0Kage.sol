@@ -30,7 +30,7 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
     // lottery start time of current epoch
     uint256 private s_lotteryStartTimestamp;
 
-    // lottery duration in hours
+    // lottery duration in minutes
     uint64 private s_duration;
 
     // lottery end time of current epoch
@@ -123,7 +123,7 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
         s_platformFee = 50; // charge 50 bps (0.5% as fee)
         s_platformBeneficiary = payable(msg.sender);
         s_lotteryFee = 0.1 ether;
-        s_duration = 24;
+        s_duration = 24*60; // 24 hours = 24*60 minutes
         s_maxTicketsPerPlayer = 100;
         i_zKage = IERC20(_zKageAddress);
 
@@ -166,8 +166,14 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
      * @dev Owner can change lottery duration for the next epoch
      * @dev Duration will always be in hours - and next start cycle is always 30 mins after current end cycle
      */
-     function changeDuration(uint8 _durationInHours) public onlyOwner Closed{
-        s_duration = _durationInHours;
+     function changeDuration(uint64 _durationInMinutes) public onlyOwner Closed{
+
+        s_duration = _durationInMinutes;
+         console.log("Duration in minutes", _durationInMinutes);
+         console.log("end time stamp before", s_lotteryEndTimestamp);            
+        // update lottery end time
+        s_lotteryEndTimestamp = s_lotteryStartTimestamp + s_duration * 1 minutes;
+        console.log("end time stamp after", s_lotteryEndTimestamp);            
      }
 
      /**
@@ -191,10 +197,12 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
      }
 
      function stopLottery() public onlyOwner{
+        console.log("lottery stopped");
         s_status = LotteryStatus.closed;
      }
 
      function startLottery() public onlyOwner{
+        console.log("lottery started");
         s_status = LotteryStatus.open;
      }
 
@@ -275,9 +283,9 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
      * @dev we use ChainLink KeeperCompatibleInterface for this
      */
     function checkUpkeep(bytes calldata /* checkData */)external override view returns(bool upkeepNeeded, bytes memory /*performData*/ ){
-
         // check if current time exceeds end time and lottery status is open
         if(block.timestamp > s_lotteryEndTimestamp && s_status == LotteryStatus.open){
+            console.log("check upkeep true");
             upkeepNeeded = true;
         }
         else{
@@ -298,7 +306,7 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
         // This indicates that lottery has ended 
         // Set status to close, update start time for next lottery and initiate settlement
         if(block.timestamp > s_lotteryEndTimestamp && s_status == LotteryStatus.open){
-            
+            console.log("performing upkeep");
             // close lottery
             s_status = LotteryStatus.closed;
 
@@ -317,6 +325,7 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
      */
     function announceWinner() public Closed{
 
+        console.log("inside announce winner");        
         uint256 requestId = i_vrfCoordinator.requestRandomWords(i_keyHash, i_subscriptionId, i_confirmations, i_callbackGasLimit, i_numWords);
         emit CloseLottery(requestId);
     }
@@ -327,6 +336,7 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
      */
     function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override{
 
+        console.log("Inside fulfil random workds");
         s_randomWord = _randomWords[0];
         // normalize random number  - and make it between 0 & s_ticketCtr
         // using modulo operator to generate a number between 0 and s_ticketCtr
@@ -365,6 +375,7 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
         // set epoch counter to +1
         s_epoch += 1;
 
+        setLotteryStartAndEndTime(block.timestamp);
         // set new start and end lottery time
         // sending a timestamp 1 minutes ahead of endtimestamp -> this forces the start time to be atleast 1 minute away from end time
         // setLotteryStartAndEndTime(s_lotteryEndTimestamp + 1 minutes);
@@ -443,13 +454,13 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
 
 
         // take current day's last second to start the lottery
-        s_lotteryStartTimestamp = toTimestamp(creationYear, creationMonth, creationDay, 23, 59, 59);
+        s_lotteryStartTimestamp = toTimestamp(creationYear, creationMonth, creationDay, 0, 0, 0);
 
         // console.log("start time %s", s_lotteryStartTimestamp);
         // console.log("time diff %s",  1 hours);
         // console.log("duration %s",  s_duration);
         // //set end time as duration hours more than start time stamp
-        s_lotteryEndTimestamp = s_lotteryStartTimestamp + s_duration * 1 hours;
+        s_lotteryEndTimestamp = s_lotteryStartTimestamp + s_duration * 1 minutes;
     }
 
   // --------------------------------------------------------------//  
@@ -526,7 +537,11 @@ contract SmartLottery0Kage is VRFConsumerBaseV2, KeeperCompatibleInterface, Date
      */
     function getOwnerForTicketId(uint256 id) public view returns(address player){
         player = s_ticketidToAddressMap[id];
-    }   
+    }
+
+    function getWinnerBalance(address winner) public view returns(uint256 reward){
+        reward = s_winnerBalances[winner];
+    }
 
     /**
      * @dev returns num tickets

@@ -33,4 +33,4 @@ const deployDateTime = async (hre: HardhatRuntimeEnvironment) => {
 
 export default deployDateTime
 
-deployDateTime.tags = ["all", "main", "datetime"]
+deployDateTime.tags = ["all", "main", "main0Kage", "datetime"]
